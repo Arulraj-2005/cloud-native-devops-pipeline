@@ -192,11 +192,11 @@ resource "aws_security_group" "eks_nodes" {
   }
 
   ingress {
-    from_port                = 1025
-    to_port                  = 65535
-    protocol                 = "tcp"
-    security_group_id        = aws_security_group.eks_cluster.id
-    description              = "Allow cluster control plane"
+    from_port       = 1025
+    to_port         = 65535
+    protocol        = "tcp"
+    cidr_blocks     = ["0.0.0.0/0"]
+    description     = "Allow cluster control plane"
   }
 
   egress {
