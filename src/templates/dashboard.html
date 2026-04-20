@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CloudNative Monitor</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080c10;
+    --surface: #0d1117;
+    --border: #1e2d3d;
+    --accent: #00d4ff;
+    --accent2: #7fff5f;
+    --accent3: #ff6b35;
+    --warn: #ffd700;
+    --text: #c9d6e3;
+    --muted: #4a6274;
+    --glow: 0 0 20px rgba(0,212,255,0.25);
+    --glow2: 0 0 20px rgba(127,255,95,0.25);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Exo 2', sans-serif;
+    min-height: 100vh;
+    background-image:
+      radial-gradient(ellipse at 20% 50%, rgba(0,212,255,0.04) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 20%, rgba(127,255,95,0.03) 0%, transparent 50%),
+      linear-gradient(180deg, #080c10 0%, #060a0e 100%);
+  }
+  /* Grid scanline overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: repeating-linear-gradient(
+      0deg, transparent, transparent 2px,
+      rgba(0,212,255,0.015) 2px, rgba(0,212,255,0.015) 4px
+    );
+    pointer-events: none; z-index: 0;
+  }
+
+  .wrapper { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+
+  /* HEADER */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 32px; padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .brand-icon {
+    width: 44px; height: 44px;
+    background: linear-gradient(135deg, var(--accent), #0080ff);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; box-shadow: var(--glow);
+  }
+  .brand-text h1 {
+    font-size: 1.35rem; font-weight: 800;
+    letter-spacing: 0.05em; color: #fff;
+    text-transform: uppercase;
+  }
+  .brand-text p {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.7rem; color: var(--muted); letter-spacing: 0.12em;
+  }
+  .status-pill {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(127,255,95,0.08);
+    border: 1px solid rgba(127,255,95,0.25);
+    border-radius: 100px; padding: 6px 14px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.75rem; color: var(--accent2);
+  }
+  .status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent2);
+    animation: pulse 2s ease-in-out infinite;
+    box-shadow: 0 0 8px var(--accent2);
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* TIMESTAMP STRIP */
+  .meta-strip {
+    display: flex; gap: 24px; flex-wrap: wrap;
+    margin-bottom: 28px;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.78rem; color: var(--muted);
+  }
+  .meta-strip span { color: var(--accent); }
+
+  /* GAUGE CARDS */
+  .gauges { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+
+  .gauge-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px; padding: 22px;
+    position: relative; overflow: hidden;
+    transition: border-color 0.3s, transform 0.2s;
+    animation: fadeUp 0.5s ease both;
+  }
+  .gauge-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .gauge-card:nth-child(1) { animation-delay: 0.05s; }
+  .gauge-card:nth-child(2) { animation-delay: 0.1s; }
+  .gauge-card:nth-child(3) { animation-delay: 0.15s; }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:none} }
+
+  .gauge-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0.6;
+  }
+  .gauge-card.mem::before { background: linear-gradient(90deg, transparent, var(--accent2), transparent); }
+  .gauge-card.disk::before { background: linear-gradient(90deg, transparent, var(--warn), transparent); }
+
+  .gauge-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.68rem; letter-spacing: 0.15em;
+    color: var(--muted); text-transform: uppercase; margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .gauge-label .icon { font-size: 1rem; }
+  .gauge-value {
+    font-size: 2.6rem; font-weight: 800;
+    color: #fff; line-height: 1; margin-bottom: 16px;
+  }
+  .gauge-value .unit { font-size: 1rem; font-weight: 300; color: var(--muted); margin-left: 4px; }
+
+  /* Progress bar */
+  .bar-track {
+    height: 6px; background: rgba(255,255,255,0.06);
+    border-radius: 4px; overflow: hidden; margin-bottom: 8px;
+  }
+  .bar-fill {
+    height: 100%; border-radius: 4px;
+    background: linear-gradient(90deg, var(--accent), #0080ff);
+    transition: width 1s ease;
+    position: relative;
+  }
+  .bar-fill::after {
+    content: ''; position: absolute;
+    right: 0; top: 0; bottom: 0; width: 20px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4));
+    border-radius: 4px;
+  }
+  .bar-fill.green { background: linear-gradient(90deg, var(--accent2), #40c000); }
+  .bar-fill.warn { background: linear-gradient(90deg, var(--warn), #ff8c00); }
+  .bar-fill.danger { background: linear-gradient(90deg, var(--accent3), #cc2200); }
+
+  .gauge-sub {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.7rem; color: var(--muted);
+  }
+  .gauge-sub span { color: var(--text); }
+
+  /* INFO GRID */
+  .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px; }
+
+  .info-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px;
+    animation: fadeUp 0.5s ease 0.2s both;
+  }
+  .info-card h3 {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.68rem; letter-spacing: 0.15em;
+    color: var(--muted); text-transform: uppercase;
+    margin-bottom: 16px; padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .info-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 7px 0; border-bottom: 1px solid rgba(30,45,61,0.5);
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .key {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.72rem; color: var(--muted);
+  }
+  .info-row .val {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.78rem; color: var(--accent);
+    max-width: 60%; text-align: right; word-break: break-all;
+  }
+  .info-row .val.green { color: var(--accent2); }
+
+  /* HISTORY CHART */
+  .chart-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 22px; margin-bottom: 24px;
+    animation: fadeUp 0.5s ease 0.25s both;
+  }
+  .chart-card h3 {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.68rem; letter-spacing: 0.15em;
+    color: var(--muted); text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  canvas { width: 100% !important; }
+
+  /* FOOTER */
+  footer {
+    text-align: center; padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.68rem; color: var(--muted);
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+
+  /* Refresh btn */
+  .refresh-btn {
+    background: rgba(0,212,255,0.08);
+    border: 1px solid rgba(0,212,255,0.3);
+    color: var(--accent);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.75rem; letter-spacing: 0.1em;
+    padding: 7px 16px; border-radius: 6px; cursor: pointer;
+    transition: background 0.2s, box-shadow 0.2s;
+  }
+  .refresh-btn:hover { background: rgba(0,212,255,0.18); box-shadow: var(--glow); }
+
+  @media (max-width: 600px) {
+    header { flex-direction: column; gap: 12px; align-items: flex-start; }
+    .gauge-value { font-size: 2rem; }
+  }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+  <header>
+    <div class="brand">
+      <div class="brand-icon">☁</div>
+      <div class="brand-text">
+        <h1>CloudNative Monitor</h1>
+        <p>DEVOPS CAPSTONE · v{{ app_version }}</p>
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center;">
+      <button class="refresh-btn" onclick="location.reload()">⟳ REFRESH</button>
+      <div class="status-pill"><div class="status-dot"></div> OPERATIONAL</div>
+    </div>
+  </header>
+
+  <div class="meta-strip">
+    <div>DEPLOYED <span>{{ deploy_time }}</span></div>
+    <div>POD <span>{{ pod_name }}</span></div>
+    <div>NAMESPACE <span>{{ pod_namespace }}</span></div>
+    <div>NODE <span>{{ node_name }}</span></div>
+    <div id="live-clock">UPTIME <span id="clock">—</span></div>
+  </div>
+
+  <!-- GAUGES -->
+  <div class="gauges">
+
+    <div class="gauge-card cpu">
+      <div class="gauge-label"><span class="icon">⚡</span> CPU Utilization</div>
+      <div class="gauge-value" id="cpu-val">{{ cpu_percent }}<span class="unit">%</span></div>
+      <div class="bar-track">
+        <div class="bar-fill {% if cpu_percent > 80 %}danger{% elif cpu_percent > 60 %}warn{% endif %}"
+             id="cpu-bar" style="width: {{ cpu_percent }}%"></div>
+      </div>
+      <div class="gauge-sub">Cores active / threshold <span>80%</span></div>
+    </div>
+
+    <div class="gauge-card mem">
+      <div class="gauge-label"><span class="icon">🧠</span> Memory Usage</div>
+      <div class="gauge-value" id="mem-val">{{ memory_percent }}<span class="unit">%</span></div>
+      <div class="bar-track">
+        <div class="bar-fill green {% if memory_percent > 80 %}danger{% elif memory_percent > 60 %}warn{% endif %}"
+             id="mem-bar" style="width: {{ memory_percent }}%"></div>
+      </div>
+      <div class="gauge-sub"><span>{{ memory_used_gb }}</span> GB used of <span>{{ memory_total_gb }}</span> GB</div>
+    </div>
+
+    <div class="gauge-card disk">
+      <div class="gauge-label"><span class="icon">💾</span> Disk Usage</div>
+      <div class="gauge-value">{{ disk_percent }}<span class="unit">%</span></div>
+      <div class="bar-track">
+        <div class="bar-fill warn {% if disk_percent > 80 %}danger{% endif %}"
+             style="width: {{ disk_percent }}%"></div>
+      </div>
+      <div class="gauge-sub"><span>{{ disk_used_gb }}</span> GB used of <span>{{ disk_total_gb }}</span> GB</div>
+    </div>
+
+  </div>
+
+  <!-- LIVE CHART -->
+  <div class="chart-card">
+    <h3>▸ Live Metrics History (last 20 samples)</h3>
+    <canvas id="metricsChart" height="80"></canvas>
+  </div>
+
+  <!-- INFO PANELS -->
+  <div class="info-grid">
+    <div class="info-card">
+      <h3>▸ Pod Information</h3>
+      <div class="info-row"><span class="key">Pod Name</span><span class="val">{{ pod_name }}</span></div>
+      <div class="info-row"><span class="key">Namespace</span><span class="val">{{ pod_namespace }}</span></div>
+      <div class="info-row"><span class="key">Node</span><span class="val">{{ node_name }}</span></div>
+      <div class="info-row"><span class="key">App Version</span><span class="val green">{{ app_version }}</span></div>
+    </div>
+    <div class="info-card">
+      <h3>▸ System Resources</h3>
+      <div class="info-row"><span class="key">CPU %</span><span class="val" id="info-cpu">{{ cpu_percent }}%</span></div>
+      <div class="info-row"><span class="key">RAM Used</span><span class="val">{{ memory_used_gb }} GB</span></div>
+      <div class="info-row"><span class="key">RAM Total</span><span class="val">{{ memory_total_gb }} GB</span></div>
+      <div class="info-row"><span class="key">Disk Used</span><span class="val">{{ disk_used_gb }} GB / {{ disk_total_gb }} GB</span></div>
+    </div>
+    <div class="info-card">
+      <h3>▸ Deployment Info</h3>
+      <div class="info-row"><span class="key">Deploy Time</span><span class="val">{{ deploy_time }}</span></div>
+      <div class="info-row"><span class="key">Health</span><span class="val green">HEALTHY ✓</span></div>
+      <div class="info-row"><span class="key">API Metrics</span><span class="val"><a href="/api/metrics" style="color:var(--accent)">/api/metrics</a></span></div>
+      <div class="info-row"><span class="key">Health Check</span><span class="val"><a href="/health" style="color:var(--accent)">/health</a></span></div>
+    </div>
+  </div>
+
+  <footer>
+    Cloud Native DevOps Pipeline · Built with Flask + Docker + Kubernetes + Terraform · 
+    <a href="/api/metrics">JSON API</a> · <a href="/health">Health</a>
+  </footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+  // Live clock
+  function tick() {
+    document.getElementById('clock').textContent = new Date().toUTCString().slice(17,25) + ' UTC';
+  }
+  tick(); setInterval(tick, 1000);
+
+  // Chart setup
+  const cpuHistory = [{{ cpu_percent }}];
+  const memHistory = [{{ memory_percent }}];
+  const labels = ['now'];
+
+  const ctx = document.getElementById('metricsChart').getContext('2d');
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'CPU %', data: cpuHistory,
+          borderColor: '#00d4ff', backgroundColor: 'rgba(0,212,255,0.08)',
+          fill: true, tension: 0.4, pointRadius: 3, pointBackgroundColor: '#00d4ff'
+        },
+        {
+          label: 'Memory %', data: memHistory,
+          borderColor: '#7fff5f', backgroundColor: 'rgba(127,255,95,0.06)',
+          fill: true, tension: 0.4, pointRadius: 3, pointBackgroundColor: '#7fff5f'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      animation: { duration: 400 },
+      scales: {
+        x: { ticks: { color: '#4a6274', font: { family: 'Share Tech Mono', size: 10 } }, grid: { color: 'rgba(30,45,61,0.6)' } },
+        y: { min: 0, max: 100, ticks: { color: '#4a6274', font: { family: 'Share Tech Mono', size: 10 }, callback: v => v + '%' }, grid: { color: 'rgba(30,45,61,0.6)' } }
+      },
+      plugins: { legend: { labels: { color: '#c9d6e3', font: { family: 'Share Tech Mono', size: 11 }, boxWidth: 12 } } }
+    }
+  });
+
+  // Poll metrics every 5s
+  async function pollMetrics() {
+    try {
+      const res = await fetch('/api/metrics');
+      const d = await res.json();
+
+      // Update gauges
+      document.getElementById('cpu-val').innerHTML = d.cpu_percent + '<span class="unit">%</span>';
+      document.getElementById('mem-val').innerHTML = d.memory_percent + '<span class="unit">%</span>';
+      document.getElementById('cpu-bar').style.width = d.cpu_percent + '%';
+      document.getElementById('mem-bar').style.width = d.memory_percent + '%';
+      document.getElementById('info-cpu').textContent = d.cpu_percent + '%';
+
+      // Update chart
+      const t = new Date().toLocaleTimeString('en', { hour12: false });
+      cpuHistory.push(d.cpu_percent);
+      memHistory.push(d.memory_percent);
+      labels.push(t);
+      if (cpuHistory.length > 20) { cpuHistory.shift(); memHistory.shift(); labels.shift(); }
+      chart.update();
+    } catch(e) { console.warn('Metrics fetch failed', e); }
+  }
+  setInterval(pollMetrics, 5000);
+</script>
+</body>
+</html>

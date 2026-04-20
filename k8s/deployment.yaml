@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudnative-monitor
+  namespace: default
+  labels:
+    app: cloudnative-monitor
+    version: "1.0.0"
+    project: cloudnative-devops
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cloudnative-monitor
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0       # zero-downtime deploys
+  template:
+    metadata:
+      labels:
+        app: cloudnative-monitor
+        version: "1.0.0"
+    spec:
+      # Spread pods across nodes for HA
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: cloudnative-monitor
+
+      containers:
+        - name: monitor
+          # IMAGE is replaced by GitHub Actions CI/CD
+          image: IMAGE_PLACEHOLDER
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
+              name: http
+              protocol: TCP
+
+          # Inject pod metadata as environment variables
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: APP_VERSION
+              value: "1.0.0"
+
+          # Resource limits — tuned for t2.micro (1 vCPU, 1 GB RAM)
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+
+          # Liveness probe — restart if app is hung
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          # Readiness probe — only send traffic when ready
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            successThreshold: 1
+            failureThreshold: 3
+
+          # Startup probe — give app 60s to start before liveness kicks in
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            failureThreshold: 12
+            periodSeconds: 5
+
+      # Graceful shutdown
+      terminationGracePeriodSeconds: 30

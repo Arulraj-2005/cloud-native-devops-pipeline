@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudnative-monitor-svc
+  namespace: default
+  labels:
+    app: cloudnative-monitor
+    project: cloudnative-devops
+  annotations:
+    # AWS ELB health check settings
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: "/health"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-interval: "10"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-healthy-threshold: "2"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-unhealthy-threshold: "3"
+    # Use Classic ELB (free tier) instead of NLB
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "http"
+spec:
+  type: LoadBalancer
+  selector:
+    app: cloudnative-monitor
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80           # External port (no need to open 5000 to users)
+      targetPort: 5000   # Container port
+  sessionAffinity: None
+
+---
+# Optional: HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: cloudnative-monitor-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: cloudnative-monitor
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
