@@ -113,10 +113,6 @@ jobs:
       - name: Terraform Init
         run: terraform init -backend=false
 
-      - name: Terraform Format Check
-        run: terraform fmt -check -recursive
-        continue-on-error: true
-
       - name: Terraform Validate
         run: terraform validate
 
@@ -155,7 +151,6 @@ jobs:
                       if doc:
                           print(f'✅ Valid YAML: {f} (kind: {doc.get(\"kind\", \"unknown\")})')
 
-          # Validate deployment specifics
           with open('k8s/deployment.yaml') as fh:
               content = fh.read().replace('IMAGE_PLACEHOLDER', 'nginx:latest')
               dep = yaml.safe_load(content)
