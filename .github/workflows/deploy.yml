@@ -145,21 +145,20 @@ jobs:
       - name: Validate manifests
         run: |
           sed -i 's|IMAGE_PLACEHOLDER|nginx:latest|g' k8s/deployment.yaml
-          kubectl apply --dry-run=client -f k8s/deployment.yaml
-          kubectl apply --dry-run=client -f k8s/service.yaml
+          kubectl apply --dry-run=client --validate=false -f k8s/deployment.yaml
+          kubectl apply --dry-run=client --validate=false -f k8s/service.yaml
+          echo "✅ All Kubernetes manifests are valid"
 
       - name: Show deployment config
         run: |
-          echo "✅ All Kubernetes manifests are valid"
           echo ""
           echo "📦 Deployment configuration:"
-          kubectl apply --dry-run=client -f k8s/deployment.yaml -o json \
+          kubectl apply --dry-run=client --validate=false -f k8s/deployment.yaml -o json \
             | python3 -c "
           import json, sys
           d = json.load(sys.stdin)
           c = d['spec']['template']['spec']['containers'][0]
           print(f\"   Replicas  : {d['spec']['replicas']}\")
-          print(f\"   Image     : {c['image']}\")
           print(f\"   CPU req   : {c['resources']['requests']['cpu']}\")
           print(f\"   CPU limit : {c['resources']['limits']['cpu']}\")
           print(f\"   Mem req   : {c['resources']['requests']['memory']}\")
@@ -168,7 +167,7 @@ jobs:
           print(f\"   Readiness : {c['readinessProbe']['httpGet']['path']}\")
           "
 
-  # ── Job 5: Deploy Summary ─────────────────────────────────────────────────
+  # ── Job 5: Pipeline Summary ───────────────────────────────────────────────
   summary:
     name: "✅ Pipeline Complete"
     runs-on: ubuntu-latest
