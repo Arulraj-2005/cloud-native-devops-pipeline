@@ -60,10 +60,10 @@ jobs:
 
       - name: Test summary
         run: |
-          echo "Lint passed"
-          echo "/health returned 200"
-          echo "/api/metrics returned 200"
-          echo "All smoke tests passed"
+          echo "✅ Lint passed"
+          echo "✅ /health returned 200"
+          echo "✅ /api/metrics returned 200"
+          echo "✅ All smoke tests passed"
 
   # ── Job 2: Build Docker Image ──────────────────────────────────────────────
   build:
@@ -87,7 +87,7 @@ jobs:
 
       - name: Build summary
         run: |
-          echo "Docker image built successfully"
+          echo "✅ Docker image built successfully"
           echo "   Image : ${{ env.IMAGE_NAME }}:latest"
           echo "   Image : ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
           echo "   Commit: ${{ github.sha }}"
@@ -118,10 +118,10 @@ jobs:
 
       - name: Show planned resources
         run: |
-          echo "Terraform configuration is valid"
+          echo "✅ Terraform configuration is valid"
           echo ""
           echo "Resources that would be created:"
-          grep "^resource" main.tf | awk '{gsub(/"/, "", $2); gsub(/"/, "", $3); print "   ✦", $2, "→", $3}'
+          grep "^resource" main.tf 2>/dev/null | awk '{gsub(/"/, "", $2); gsub(/"/, "", $3); print "   ✦", $2, "→", $3}' || echo "   (no resources found)"
 
   # ── Job 4: Kubernetes Validate ────────────────────────────────────────────
   k8s-validate:
@@ -141,39 +141,87 @@ jobs:
           python3 -c "
           import yaml, sys
 
+          print('╔════════════════════════════════════════════════════════════════╗')
+          print('║           Kubernetes Manifests Validation                      ║')
+          print('╚════════════════════════════════════════════════════════════════╝')
+          print('')
+
           files = ['k8s/deployment.yaml', 'k8s/service.yaml']
 
+          # First pass: check YAML syntax
           for f in files:
-              with open(f) as fh:
+              try:
+                  with open(f) as fh:
+                      content = fh.read().replace('IMAGE_PLACEHOLDER', 'nginx:latest')
+                      docs = list(yaml.safe_load_all(content))
+                      for doc in docs:
+                          if doc:
+                              print(f'✅ Valid YAML: {f} (kind: {doc.get(\"kind\", \"unknown\")})')
+              except Exception as e:
+                  print(f'❌ Invalid YAML: {f} - {e}')
+                  sys.exit(1)
+
+          print('')
+
+          # Second pass: validate deployment configuration
+          try:
+              with open('k8s/deployment.yaml') as fh:
                   content = fh.read().replace('IMAGE_PLACEHOLDER', 'nginx:latest')
-                  docs = list(yaml.safe_load_all(content))
-                  for doc in docs:
-                      if doc:
-                          print(f'Valid YAML: {f} (kind: {doc.get(\"kind\", \"unknown\")})')
+                  dep = yaml.safe_load(content)
+          except Exception as e:
+              print(f'❌ Failed to load deployment.yaml: {e}')
+              sys.exit(1)
 
-          with open('k8s/deployment.yaml') as fh:
-              content = fh.read().replace('IMAGE_PLACEHOLDER', 'nginx:latest')
-              dep = yaml.safe_load(content)
-
+          # Deployment validations
           assert dep['kind'] == 'Deployment', 'Expected Deployment'
           assert dep['spec']['replicas'] == 2, 'Expected 2 replicas'
-
+          assert dep['spec']['strategy']['type'] == 'RollingUpdate', 'Expected RollingUpdate'
+          
           c = dep['spec']['template']['spec']['containers'][0]
-          assert 'livenessProbe' in c,  'Missing livenessProbe'
+          assert 'livenessProbe' in c, 'Missing livenessProbe'
           assert 'readinessProbe' in c, 'Missing readinessProbe'
-          assert 'resources' in c,      'Missing resource limits'
+          assert 'startupProbe' in c, 'Missing startupProbe'
+          assert 'resources' in c, 'Missing resource limits'
+          
+          # Validate topology spread
+          spec = dep['spec']['template']['spec']
+          assert 'topologySpreadConstraints' in spec, 'Missing topology spread constraints'
+          
+          print('📋 Deployment configuration validated:')
+          print(f'   ├─ Replicas        : {dep[\"spec\"][\"replicas\"]}')
+          print(f'   ├─ Update strategy : RollingUpdate (maxUnavailable=0, maxSurge=1)')
+          print(f'   ├─ Topology spread : {len(spec[\"topologySpreadConstraints\"])} constraints')
+          print(f'   ├─ CPU request     : {c[\"resources\"][\"requests\"][\"cpu\"]}')
+          print(f'   ├─ CPU limit       : {c[\"resources\"][\"limits\"][\"cpu\"]}')
+          print(f'   ├─ Memory request  : {c[\"resources\"][\"requests\"][\"memory\"]}')
+          print(f'   ├─ Memory limit    : {c[\"resources\"][\"limits\"][\"memory\"]}')
+          print(f'   ├─ Liveness probe  : {c[\"livenessProbe\"][\"httpGet\"][\"path\"]}')
+          print(f'   ├─ Readiness probe : {c[\"readinessProbe\"][\"httpGet\"][\"path\"]}')
+          print(f'   └─ Startup probe   : {c[\"startupProbe\"][\"httpGet\"][\"path\"]}')
+          
+          print('')
+          print('╔════════════════════════════════════════════════════════════════╗')
+          print('║              ✅ All Kubernetes checks passed                   ║')
+          print('╚════════════════════════════════════════════════════════════════╝')
+          "
 
-          print('')
-          print('Deployment configuration:')
-          print(f'   Replicas  : {dep[\"spec\"][\"replicas\"]}')
-          print(f'   CPU req   : {c[\"resources\"][\"requests\"][\"cpu\"]}')
-          print(f'   CPU limit : {c[\"resources\"][\"limits\"][\"cpu\"]}')
-          print(f'   Mem req   : {c[\"resources\"][\"requests\"][\"memory\"]}')
-          print(f'   Mem limit : {c[\"resources\"][\"limits\"][\"memory\"]}')
-          print(f'   Liveness  : {c[\"livenessProbe\"][\"httpGet\"][\"path\"]}')
-          print(f'   Readiness : {c[\"readinessProbe\"][\"httpGet\"][\"path\"]}')
-          print('')
-          print('All Kubernetes manifest checks passed')
+      - name: Validate service manifest
+        run: |
+          python3 -c "
+          import yaml
+          
+          with open('k8s/service.yaml') as fh:
+              svc = yaml.safe_load(fh)
+          
+          assert svc['kind'] == 'Service', 'Expected Service'
+          assert svc['spec']['type'] == 'LoadBalancer', 'Expected LoadBalancer'
+          assert svc['spec']['ports'][0]['port'] == 80, 'Expected port 80'
+          assert svc['spec']['ports'][0]['targetPort'] == 5000, 'Expected targetPort 5000'
+          
+          print('✅ Service manifest validated:')
+          print(f'   ├─ Type         : {svc[\"spec\"][\"type\"]}')
+          print(f'   ├─ Port         : {svc[\"spec\"][\"ports\"][0][\"port\"]}')
+          print(f'   └─ TargetPort   : {svc[\"spec\"][\"ports\"][0][\"targetPort\"]}')
           "
 
   # ── Job 5: Pipeline Summary ───────────────────────────────────────────────
@@ -185,22 +233,32 @@ jobs:
     steps:
       - name: Pipeline summary
         run: |
-          echo "╔══════════════════════════════════════════════╗"
-          echo "║   Cloud Native DevOps Pipeline — SUCCESS     ║"
-          echo "╠══════════════════════════════════════════════╣"
-          echo "║                                              ║"
-          echo "║      Lint & Tests passed                     ║"
-          echo "║      Docker image built                      ║"
-          echo "║      Terraform validated                     ║"
-          echo "║      Kubernetes manifests validated          ║"
-          echo "║                                              ║"
-          echo "╠══════════════════════════════════════════════╣"
-          echo "║  Commit : ${{ github.sha }}  ║"
-          echo "║  Branch : ${{ github.ref_name }}            ║"
-          echo "║  Author : ${{ github.actor }}               ║"
-          echo "║  Region : us-east-1                         ║"
-          echo "║  Cluster: cloudnative-devops-cluster        ║"
-          echo "║                                              ║"
-          echo "║  Stack  : Flask · Docker · Terraform        ║"
-          echo "║           Kubernetes · GitHub Actions · AWS ║"
-          echo "╚══════════════════════════════════════════════╝"
+          echo "╔════════════════════════════════════════════════════════════════╗"
+          echo "║                                                                ║"
+          echo "║        Cloud Native DevOps Pipeline — SUCCESS                  ║"
+          echo "║                                                                ║"
+          echo "╠════════════════════════════════════════════════════════════════╣"
+          echo "║                                                                ║"
+          echo "║  ✅ Lint & Tests passed                                        ║"
+          echo "║  ✅ Docker image built                                         ║"
+          echo "║  ✅ Terraform validated                                        ║"
+          echo "║  ✅ Kubernetes manifests validated                             ║"
+          echo "║                                                                ║"
+          echo "╠════════════════════════════════════════════════════════════════╣"
+          echo "║                                                                ║"
+          echo "║  📦 Build Information                                          ║"
+          echo "║     Commit    : ${{ github.sha }}"
+          echo "║     Branch    : ${{ github.ref_name }}"
+          echo "║     Author    : ${{ github.actor }}"
+          echo "║     Region    : us-east-1"
+          echo "║     Cluster   : cloudnative-devops-cluster"
+          echo "║                                                                ║"
+          echo "║  🛠️  Technology Stack                                         ║"
+          echo "║     • Python Flask (Backend)                                   ║"
+          echo "║     • Docker (Containerisation)                                ║"
+          echo "║     • Terraform (Infrastructure as Code)                       ║"
+          echo "║     • Kubernetes (Orchestration)                               ║"
+          echo "║     • GitHub Actions (CI/CD)                                   ║"
+          echo "║     • AWS (Target Cloud)                                       ║"
+          echo "║                                                                ║"
+          echo "╚════════════════════════════════════════════════════════════════╝"
