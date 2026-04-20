@@ -206,23 +206,50 @@ jobs:
           "
 
       - name: Validate service manifest
-        run: |
-          python3 -c "
-          import yaml
-          
-          with open('k8s/service.yaml') as fh:
-              svc = yaml.safe_load(fh)
-          
-          assert svc['kind'] == 'Service', 'Expected Service'
-          assert svc['spec']['type'] == 'LoadBalancer', 'Expected LoadBalancer'
-          assert svc['spec']['ports'][0]['port'] == 80, 'Expected port 80'
-          assert svc['spec']['ports'][0]['targetPort'] == 5000, 'Expected targetPort 5000'
-          
-          print('✅ Service manifest validated:')
-          print(f'   ├─ Type         : {svc[\"spec\"][\"type\"]}')
-          print(f'   ├─ Port         : {svc[\"spec\"][\"ports\"][0][\"port\"]}')
-          print(f'   └─ TargetPort   : {svc[\"spec\"][\"ports\"][0][\"targetPort\"]}')
-          "
+  run: |
+    python3 -c "
+    import yaml
+    
+    with open('k8s/service.yaml') as fh:
+        # Read all YAML documents (separated by ---)
+        docs = list(yaml.safe_load_all(fh))
+    
+    print(f'Found {len(docs)} YAML documents in service.yaml')
+    print('')
+    
+    # First document should be Service
+    svc = docs[0]
+    assert svc['kind'] == 'Service', 'Expected Service, got ' + svc['kind']
+    assert svc['spec']['type'] == 'LoadBalancer', 'Expected LoadBalancer'
+    assert svc['spec']['ports'][0]['port'] == 80, 'Expected port 80'
+    assert svc['spec']['ports'][0]['targetPort'] == 5000, 'Expected targetPort 5000'
+    
+    print('✅ Service manifest validated:')
+    print(f'   ├─ Kind         : {svc[\"kind\"]}')
+    print(f'   ├─ Type         : {svc[\"spec\"][\"type\"]}')
+    print(f'   ├─ Port         : {svc[\"spec\"][\"ports\"][0][\"port\"]}')
+    print(f'   └─ TargetPort   : {svc[\"spec\"][\"ports\"][0][\"targetPort\"]}')
+    
+    # Second document should be HorizontalPodAutoscaler
+    if len(docs) >= 2:
+        hpa = docs[1]
+        assert hpa['kind'] == 'HorizontalPodAutoscaler', 'Expected HorizontalPodAutoscaler, got ' + hpa['kind']
+        assert hpa['spec']['minReplicas'] == 2, 'Expected min replicas 2'
+        assert hpa['spec']['maxReplicas'] == 4, 'Expected max replicas 4'
+        
+        print('')
+        print('✅ HorizontalPodAutoscaler validated:')
+        print(f'   ├─ Kind         : {hpa[\"kind\"]}')
+        print(f'   ├─ Min replicas : {hpa[\"spec\"][\"minReplicas\"]}')
+        print(f'   ├─ Max replicas : {hpa[\"spec\"][\"maxReplicas\"]}')
+        print(f'   └─ CPU target   : 70% utilization')
+    else:
+        print('')
+        print('⚠️  No HorizontalPodAutoscaler found (optional)')
+    
+    print('')
+    print('✅ All service.yaml validation passed!')
+    "
 
   # ── Job 5: Pipeline Summary ───────────────────────────────────────────────
   summary:
