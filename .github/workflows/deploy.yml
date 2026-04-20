@@ -137,34 +137,48 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'v1.29.0'
+      - name: Install PyYAML
+        run: pip install pyyaml
 
-      - name: Validate manifests
+      - name: Validate manifests with Python
         run: |
-          sed -i 's|IMAGE_PLACEHOLDER|nginx:latest|g' k8s/deployment.yaml
-          kubectl apply --dry-run=client --validate=false -f k8s/deployment.yaml
-          kubectl apply --dry-run=client --validate=false -f k8s/service.yaml
-          echo "✅ All Kubernetes manifests are valid"
+          python3 -c "
+          import yaml, sys
 
-      - name: Show deployment config
-        run: |
-          echo ""
-          echo "📦 Deployment configuration:"
-          kubectl apply --dry-run=client --validate=false -f k8s/deployment.yaml -o json \
-            | python3 -c "
-          import json, sys
-          d = json.load(sys.stdin)
-          c = d['spec']['template']['spec']['containers'][0]
-          print(f\"   Replicas  : {d['spec']['replicas']}\")
-          print(f\"   CPU req   : {c['resources']['requests']['cpu']}\")
-          print(f\"   CPU limit : {c['resources']['limits']['cpu']}\")
-          print(f\"   Mem req   : {c['resources']['requests']['memory']}\")
-          print(f\"   Mem limit : {c['resources']['limits']['memory']}\")
-          print(f\"   Liveness  : {c['livenessProbe']['httpGet']['path']}\")
-          print(f\"   Readiness : {c['readinessProbe']['httpGet']['path']}\")
+          files = ['k8s/deployment.yaml', 'k8s/service.yaml']
+
+          for f in files:
+              with open(f) as fh:
+                  content = fh.read().replace('IMAGE_PLACEHOLDER', 'nginx:latest')
+                  docs = list(yaml.safe_load_all(content))
+                  for doc in docs:
+                      if doc:
+                          print(f'✅ Valid YAML: {f} (kind: {doc.get(\"kind\", \"unknown\")})')
+
+          # Validate deployment specifics
+          with open('k8s/deployment.yaml') as fh:
+              content = fh.read().replace('IMAGE_PLACEHOLDER', 'nginx:latest')
+              dep = yaml.safe_load(content)
+
+          assert dep['kind'] == 'Deployment', 'Expected Deployment'
+          assert dep['spec']['replicas'] == 2, 'Expected 2 replicas'
+
+          c = dep['spec']['template']['spec']['containers'][0]
+          assert 'livenessProbe' in c,  'Missing livenessProbe'
+          assert 'readinessProbe' in c, 'Missing readinessProbe'
+          assert 'resources' in c,      'Missing resource limits'
+
+          print('')
+          print('📦 Deployment configuration:')
+          print(f'   Replicas  : {dep[\"spec\"][\"replicas\"]}')
+          print(f'   CPU req   : {c[\"resources\"][\"requests\"][\"cpu\"]}')
+          print(f'   CPU limit : {c[\"resources\"][\"limits\"][\"cpu\"]}')
+          print(f'   Mem req   : {c[\"resources\"][\"requests\"][\"memory\"]}')
+          print(f'   Mem limit : {c[\"resources\"][\"limits\"][\"memory\"]}')
+          print(f'   Liveness  : {c[\"livenessProbe\"][\"httpGet\"][\"path\"]}')
+          print(f'   Readiness : {c[\"readinessProbe\"][\"httpGet\"][\"path\"]}')
+          print('')
+          print('✅ All Kubernetes manifest checks passed')
           "
 
   # ── Job 5: Pipeline Summary ───────────────────────────────────────────────
